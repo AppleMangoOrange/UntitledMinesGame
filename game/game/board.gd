@@ -21,17 +21,17 @@ const SOURCE_WRONG := 11     # Wrong flag sprite
 @onready var cells_layer: TileMapLayer = find_child("TileMapLayer")
 
 # Preload logic file
-const MinesClass = preload("res://logic/Mines.cs") 
+const MinesClass: Resource = preload("res://logic/Mines.cs") 
 # The C# Minesweeper game instance
 var game = null
 
 
 func _ready() -> void:
-	_initialize_game()
+	_initialise_game()
 	_generate_board()
 	board_generated.emit()
 
-func _initialize_game() -> void:
+func _initialise_game() -> void:
 	game = MinesClass.new()
 	
 	# Connect signals

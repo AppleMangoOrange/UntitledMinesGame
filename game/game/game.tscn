@@ -1,4 +1,4 @@
-[gd_scene load_steps=6 format=3 uid="uid://dquc4kkxu28x8"]
+[gd_scene format=3 uid="uid://dquc4kkxu28x8"]
 
 [ext_resource type="PackedScene" uid="uid://cx54nayput11f" path="res://game/board.tscn" id="1_l1rk1"]
 [ext_resource type="Script" uid="uid://drppm6fscu451" path="res://game/game.gd" id="1_vasa2"]
@@ -12,7 +12,7 @@ axis_stretch_vertical = 1
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_vasa2"]
 bg_color = Color(0.1316, 0.124000005, 0.2, 1)
 
-[node name="Control" type="Control"]
+[node name="Control" type="Control" unique_id=1013670186]
 layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
@@ -23,7 +23,7 @@ size_flags_horizontal = 3
 size_flags_vertical = 3
 script = ExtResource("1_vasa2")
 
-[node name="PanelContainer" type="PanelContainer" parent="."]
+[node name="PanelContainer" type="PanelContainer" parent="." unique_id=1629013178]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -32,26 +32,26 @@ grow_horizontal = 2
 grow_vertical = 2
 theme_override_styles/panel = SubResource("StyleBoxTexture_vasa2")
 
-[node name="LayoutContainer" type="BoxContainer" parent="PanelContainer"]
+[node name="LayoutContainer" type="BoxContainer" parent="PanelContainer" unique_id=1025379249]
 layout_mode = 2
 
-[node name="GameContainer" type="SubViewportContainer" parent="PanelContainer/LayoutContainer"]
+[node name="GameContainer" type="SubViewportContainer" parent="PanelContainer/LayoutContainer" unique_id=975509637]
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
 stretch = true
 
-[node name="SubViewport" type="SubViewport" parent="PanelContainer/LayoutContainer/GameContainer"]
+[node name="SubViewport" type="SubViewport" parent="PanelContainer/LayoutContainer/GameContainer" unique_id=1291437745]
 transparent_bg = true
 handle_input_locally = false
 size = Vector2i(1148, 648)
 render_target_update_mode = 4
 
-[node name="Board" parent="PanelContainer/LayoutContainer/GameContainer/SubViewport" instance=ExtResource("1_l1rk1")]
+[node name="Board" parent="PanelContainer/LayoutContainer/GameContainer/SubViewport" unique_id=1069612889 instance=ExtResource("1_l1rk1")]
 
-[node name="HUD" type="PanelContainer" parent="PanelContainer/LayoutContainer"]
+[node name="HUD" type="PanelContainer" parent="PanelContainer/LayoutContainer" unique_id=1089278716]
 layout_mode = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_vasa2")
 
-[node name="OptionContainer" type="FlowContainer" parent="PanelContainer/LayoutContainer/HUD"]
+[node name="OptionContainer" type="FlowContainer" parent="PanelContainer/LayoutContainer/HUD" unique_id=1750012760]
 layout_mode = 2
