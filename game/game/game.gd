@@ -1,16 +1,16 @@
 extends Control
 
-@onready var layout_container = $PanelContainer/LayoutContainer
-@onready var game_container = $PanelContainer/LayoutContainer/GameContainer
-@onready var game_viewport = $PanelContainer/LayoutContainer/GameContainer/SubViewport
-@onready var game_board = $PanelContainer/LayoutContainer/GameContainer/SubViewport/Board
-@onready var hud_panel = $PanelContainer/LayoutContainer/HUD
-@onready var option_container = $PanelContainer/LayoutContainer/HUD/OptionContainer
+@onready var layout_container: Node = $PanelContainer/LayoutContainer
+@onready var game_container: Node = $PanelContainer/LayoutContainer/GameContainer
+@onready var game_viewport: Node = $PanelContainer/LayoutContainer/GameContainer/SubViewport
+@onready var game_board: Node = $PanelContainer/LayoutContainer/GameContainer/SubViewport/Board
+@onready var hud_panel: Node = $PanelContainer/LayoutContainer/HUD
+@onready var option_container: Node = $PanelContainer/LayoutContainer/HUD/OptionContainer
 const button_class = preload("res://game/hud_button.tscn")
 
 @export var hud_scale_ratio: float = 0.15
 
-func _ready():
+func _ready() -> void:
 	get_tree().root.size_changed.connect(_on_resize)
 	_on_resize()
 	
@@ -18,29 +18,30 @@ func _ready():
 	_add_hud_options()
 
 
-func _on_resize():
-	var screen_size = get_viewport_rect().size
-	var is_portrait = screen_size.y > screen_size.x
+func _on_resize() -> void:
+	var screen_size := get_viewport_rect().size
+	var is_portrait := screen_size.y > screen_size.x
 	_switch_orientation(is_portrait)
 	_switch_hud(is_portrait)
 	
 	# Resize HUD children
-	var small_dim = min(screen_size.x, screen_size.y)
-	var new_btn_size = small_dim * hud_scale_ratio
-	var size_vector = Vector2(new_btn_size, new_btn_size)
+	var small_dim: float = min(screen_size.x, screen_size.y)
+	var new_btn_size := small_dim * hud_scale_ratio
+	var size_vector := Vector2(new_btn_size, new_btn_size)
 	for opn in option_container.get_children():
-		if opn is Button:
-			opn.custom_minimum_size = size_vector
+		var btn := opn as Button
+		if btn != null:
+			btn.custom_minimum_size = size_vector
 
 
-func _switch_orientation(is_portrait: bool):
+func _switch_orientation(is_portrait: bool) -> void:
 	# Save current children
-	var children = layout_container.get_children()
+	var children := layout_container.get_children()
 	for child in children:
 		layout_container.remove_child(child)
 	
 	# Replace the container with the correct type
-	var new_container
+	var new_container: BoxContainer
 	if is_portrait:
 		new_container = VBoxContainer.new()
 	else:
@@ -58,8 +59,8 @@ func _switch_orientation(is_portrait: bool):
 		layout_container.add_child(child)
 
 
-func _switch_hud(is_portrait: bool):
-	var new_opt_container
+func _switch_hud(is_portrait: bool) -> void:
+	var new_opt_container: BoxContainer
 	if is_portrait:
 		# HUD is at bottom (wide), buttons should flow horizontally
 		new_opt_container = HBoxContainer.new()
@@ -71,7 +72,7 @@ func _switch_hud(is_portrait: bool):
 		new_opt_container.alignment = BoxContainer.ALIGNMENT_CENTER
 
 	# Swap the container while keeping the buttons
-	var options = option_container.get_children()
+	var options := option_container.get_children()
 	for btn in options:
 		option_container.remove_child(btn)
 	
@@ -83,7 +84,7 @@ func _switch_hud(is_portrait: bool):
 		option_container.add_child(btn)
 
 
-func _add_hud_options():
+func _add_hud_options() -> void:
 	# invert controls
 	var button_invert_contr: TextureButton = button_class.instantiate()
 	button_invert_contr.texture_normal = load("res://sprites/button/InvertControlsA.png")
@@ -100,6 +101,6 @@ func _add_hud_options():
 	option_container.add_child(button_test1)
 
 
-func _invert_controls(toggled_on: bool):
+func _invert_controls(toggled_on: bool) -> void:
 	GameSettings.inverted_controls = toggled_on
 	GameSettings.save_settings()

@@ -1,4 +1,4 @@
-# NoMine
+# Untitled Minesweeper Game
 
 **A cross-platform Minesweeper game aiming to have _all_ the features.**
 
@@ -9,13 +9,18 @@ Made using the Godot game engine.
 - [ ] Games with mine density > 0.5
 - [ ] Puzzle levels isolating aspects to teach advanced Minesweeper tactics
 - [ ] Anti-Guess: The game automatically detects when the player is guessing instead of solving, losing the game.
-- [ ] Expert mode: `?` tiles. Games required to be solvable using the given information.
+    - Reference: [Chocolate Sweeper](https://nyahoon.com/products/chocolate-sweeper)
+    - Reference: [Kaboom](https://github.com/pwmarcz/kaboom)
+- [ ] Expert mode: `?`. Games required to be solvable using the given information.
 - [ ] UI: Dark mode / Themes
+- [ ] Real-time board generation (<= 1s)
+    - [ ] idea: Priority queue of constraints
+- [ ] Infinite minesweeper: Just set the density and solve forever
 - Settings:
-  - [x] Chord mode to uncover cells which have satisfied the mines count
-  - [ ] Automatically uncover cells which have satisfied the mines count (without chord mode)
-  - [ ] Chord mode to place flags on cells which have satisfied the cleared cells count
-  - [ ] Automatically place flags on cells which have satisfied the cleared cells count (without chord mode)
+    - [x] Chord mode to uncover cells which have satisfied the mines count
+    - [ ] Automatically uncover cells which have satisfied the mines count (without chord mode)
+    - [ ] Chord mode to place flags on cells which have satisfied the cleared cells count
+    - [ ] Automatically place flags on cells which have satisfied the cleared cells count (without chord mode)
   
 ### Guaranteed-solvable games
 
@@ -23,7 +28,7 @@ The game includes a C# port of **Simon Tatham's Portable Puzzle Collection**'s [
 
 ### Game density
 
-More advanced tactics of Minesweeper are only applicable in boards with high densities. Increasing the mine density beyond 0.5 will decrease the chances of getting boring games
+More advanced tactics of Minesweeper are only applicable in boards with high densities. Increasing the mine density beyond 0.5 will decrease the chances of getting "boring" games.
 
 ### Puzzles
 

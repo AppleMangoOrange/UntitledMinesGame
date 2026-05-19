@@ -1,0 +1,24 @@
+[package]
+name = "mines_core"
+version = "0.2.0"
+edition = "2024"
+
+[profile.release]
+codegen-units = 1
+lto = true
+panic ="abort"
+strip = "debuginfo"
+
+[features]
+godot = ["dep:godot"]
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+godot = {version = "0.4.5", optional = true}
+log = "0.4.29"
+rand = "0.10.1"
+
+[dev-dependencies]
+env_logger = "0.11.10"
