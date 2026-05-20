@@ -4,8 +4,9 @@ use rand::TryRng;
 use rand::rngs::SysRng;
 
 pub fn main() {
-    env_logger::init();
+    env_logger::try_init().unwrap_or_default();
     let _ = test_generation();
+    let _ = test_solve();
 }
 
 fn test_generation() -> Result<(), &'static str> {
@@ -30,9 +31,9 @@ fn test_generation() -> Result<(), &'static str> {
     Ok(())
 }
 
-fn _test_solve() {
+fn test_solve() {
     let board = "100010001110111001100001000110000001110000110111000111000101001100010001011100011";
     let grid = &mut Grid::from_mines(9, 9, (4, 4), board.chars().map(|c| c == '1').collect());
-    Solver::solve_grid(grid, 35);
+    Solver::solve_grid(grid, 35).unwrap();
     println!("Grid: {}", grid);
 }

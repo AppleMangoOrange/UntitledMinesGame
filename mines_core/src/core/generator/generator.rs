@@ -1,4 +1,4 @@
-use log::{Level, debug, error, info, log_enabled, warn};
+use log::{Level, debug, info, log_enabled, warn};
 use rand::seq::{IndexedRandom, SliceRandom};
 use rand::{RngExt, SeedableRng, rngs};
 use std::cmp::{Ord, Ordering, PartialOrd};
@@ -81,10 +81,10 @@ impl Constraint {
                     Visibility::Flagged => mines_remaining -= 1,
                     _ => (),
                 }
-                debug!(
-                    "Neighbour {bit_i} is {}. Remaining mines: {mines_remaining}",
-                    grid[nbr_i].visibility
-                );
+                // debug!(
+                //     "Neighbour {bit_i} is {}. Remaining mines: {mines_remaining}",
+                //     grid[nbr_i].visibility
+                // );
             }
         }
         if hook_x == -1 {
@@ -386,11 +386,12 @@ impl<'a> Solver<'a> {
     fn solve_dequeue_constraints_todo(&mut self) -> bool {
         let mut done_something = false;
         while let Some(c1) = self.constraints_todo.pop_front() {
+            done_something = true;
             if !self.constraints[(c1.x, c1.y)].contains(&c1) {
-                debug!("Ignoring stale constraint {c1:?}.");
+                debug!("Ignoring and removing stale constraint: {c1:?}.");
+                self.constraints[(c1.x, c1.y)].retain(|&c| !(c == c1));
                 continue;
             }
-            done_something = true;
             let (x, y) = (c1.x, c1.y);
 
             let mut overlaps = Vec::new();
@@ -602,7 +603,7 @@ impl<'a> Solver<'a> {
     }
 
     /// Internal solver function
-    fn solve(&mut self) -> bool {
+    fn solve(&mut self) -> Result<(), ()> {
         loop {
             if log_enabled!(log::Level::Debug) {
                 debug!("Solver-Generator iteration starting...");
@@ -629,20 +630,18 @@ impl<'a> Solver<'a> {
             let hidden_left = self.grid.count_cells(Visibility::Hidden);
             if !done_something && hidden_left > 0 {
                 debug!("Unable to solve grid.");
-                break false;
+                break Err(());
             } else if hidden_left == 0 {
                 debug!("Solving complete!");
-                break true;
+                break Ok(());
             }
         }
     }
 
     /// Creates a new solver instance and solves `grid` in place.
-    pub fn solve_grid(grid: &mut Grid<Cell>, num_mines: usize) {
+    pub fn solve_grid(grid: &mut Grid<Cell>, num_mines: usize) -> Result<(), ()> {
         let mut s = Solver::init(grid, num_mines);
-        if !s.solve() {
-            error!("Unable to solve grid.");
-        }
+        s.solve()
     }
 
     /// Helper function for `perturb()`. Whether all masked cell in the constraint share the exact same set of revealed neighbours.
@@ -948,7 +947,9 @@ impl<'a> Solver<'a> {
                             .grid
                             .get_relative_indices((x, y), -1..=1, -1..=1)
                             .flatten()
-                            .any(|n| self.grid[n].visibility == Visibility::Flagged)
+                            .any(|n| self.grid[n].visibility == Visibility::Hidden)
+                    // .any(|n| self.grid[n].visibility == Visibility::Flagged)
+                    // TODO: check visibility criteria (caused generating unsolvable boards)
                 })
                 .map(|((x, y), _c)| (x, y))
                 .collect();
@@ -964,31 +965,32 @@ impl<'a> Solver<'a> {
             debug!("Constraints after perturbation: {all_constraints:#?}");
         }
     }
-}
 
-/// Generates a non-guessing solvable board using the internal solver
-fn solve_generate(
-    (width, height): (usize, usize),
-    start: (usize, usize),
-    num_mines: usize,
-    rng: &mut impl rand::Rng,
-) -> Result<Grid<Cell>, (&str, Grid<Cell>)> {
-    let mut grid = Grid::new_random(width, height, start, rng, num_mines);
-    info!("Initial grid: {:?}", grid);
-    let mut solver = Solver::init(&mut grid, num_mines);
-    let mut num_perturbs = 0;
-    while !solver.solve() {
-        if num_perturbs >= solver.options.max_perturbations {
-            warn!("Solver failed and reached maximum perturbations. Returning unsolvable grid.");
-            return Err(("Reached maximum perturbations", grid));
+    // TODO: Update to accept Grid object instead.
+    /// Generates a non-guessing solvable board using the internal solver. Returns Err(()) if
+    /// reached maximum perturbations.
+    fn solve_generate(
+        &mut self,
+        start: (usize, usize),
+        rng: &mut impl rand::Rng,
+    ) -> Result<(), ()> {
+        info!("Initial grid: {:?}", self.grid);
+        let mut num_perturbs = 0;
+        while self.solve().is_err() {
+            if num_perturbs >= self.options.max_perturbations {
+                warn!(
+                    "Solver failed and reached maximum perturbations. Returning unsolvable grid."
+                );
+                return Err(());
+            }
+            debug!("Running perturbation no. {}", num_perturbs);
+            self.perturb(start, rng);
+            num_perturbs += 1;
         }
-        debug!("Running perturbation no. {}", num_perturbs);
-        solver.perturb(start, rng);
-        num_perturbs += 1;
-    }
-    info!("Generation completed in {} perturbations.", num_perturbs);
+        info!("Generation completed in {} perturbations.", num_perturbs);
 
-    Ok(grid)
+        Ok(())
+    }
 }
 
 /// Generates a Game with num_mines mines of width x height dimensions using `seed` in
@@ -1004,17 +1006,107 @@ pub fn new_with_mines(
 ) -> (Grid<Cell>, bool) {
     info!("Generating new game with seed {seed}");
     let mut random = rngs::Xoshiro128PlusPlus::seed_from_u64(seed);
+    let mut grid = Grid::new_random(width, height, start, &mut random, num_mines);
 
     if solvable {
-        let res = solve_generate((width, height), start, num_mines, &mut random);
+        let res = {
+            let mut solver = Solver::init(&mut grid, num_mines);
+            solver.solve_generate(start, &mut random)
+        };
         match res {
-            Ok(grid) => (grid, true),
-            Err((_, grid)) => (grid, false),
+            Ok(()) => (grid, true),
+            Err(()) => (grid, false),
         }
     } else {
-        (
-            Grid::new_random(width, height, start, &mut random, num_mines),
-            false,
-        )
+        (grid, false)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rand::{SeedableRng, rngs::StdRng};
+
+    /// Construct a grid from string, with `*` as mines and other characters as open cells
+    fn grid_from_ascii(grid: &[&str], start: (usize, usize)) -> Grid<Cell> {
+        let height = grid.len();
+        let width = grid[0].len();
+        let mut map = Vec::with_capacity(width * height);
+
+        for r in grid {
+            for ch in r.chars() {
+                map.push(ch == '*');
+            }
+        }
+
+        Grid::from_mines(width, height, start, map)
+    }
+
+    #[test]
+    /// Tests for solving of a grid generated by Simon Thatham's mines.c. This does not check for
+    /// advanced constraint resolution (> 2 Constraints).
+    fn test_solver() {
+        env_logger::try_init().unwrap_or_default();
+        let map = [
+            "*...*...*",
+            "**.***..*",
+            "*....*...",
+            "**......*",
+            "**....**.",
+            "***...***",
+            "...*.*..*",
+            "*...*...*",
+            ".***...**",
+        ];
+        let num_mines = 35;
+        let mut grid = grid_from_ascii(&map, (4, 4));
+        Solver::solve_grid(&mut grid, num_mines).expect("Failed to solve grid.");
+        println!("Grid: {grid}");
+        assert_eq!(
+            grid.count_cells(Visibility::Hidden),
+            0,
+            "Number of hidden cells {} > 0.",
+            grid.count_cells(Visibility::Hidden)
+        );
+        assert_eq!(
+            grid.count_cells(Visibility::Flagged),
+            num_mines,
+            "Number of flagged cells {} != {num_mines}",
+            grid.count_cells(Visibility::Flagged)
+        );
+    }
+
+    #[test]
+    fn test_generate() {
+        env_logger::try_init().unwrap_or_default();
+        let mut rng = StdRng::seed_from_u64(1234);
+        let width = 32;
+        let height = 16;
+        let start = (width / 2, height / 2);
+        let num_mines = 200;
+        let mut grid = Grid::new_random(width, height, start, &mut rng, num_mines);
+        let mut generator = Solver::init(&mut grid, num_mines);
+        generator
+            .solve_generate(start, &mut rng)
+            .expect("Failed board generation.");
+
+        println!("Generated grid: {grid:?}");
+        let mut grid = grid.clone_reset(start);
+        Solver::solve_grid(&mut grid, num_mines).unwrap_or_else(|_| {
+            panic!("Solving failed after generation. Partially solved: {grid}");
+        });
+        println!("Aftering solving: {grid:?}");
+        assert_eq!(
+            grid.count_cells(Visibility::Hidden),
+            0,
+            "Number of hidden cells {} > 0.",
+            grid.count_cells(Visibility::Hidden)
+        );
+        assert_eq!(
+            grid.count_cells(Visibility::Flagged),
+            num_mines,
+            "Number of flagged cells {} != {num_mines}",
+            grid.count_cells(Visibility::Flagged)
+        );
     }
 }
