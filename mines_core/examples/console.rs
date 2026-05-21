@@ -1,5 +1,5 @@
 use mines_core::core::generator::generator::*;
-use mines_core::core::state::grid::Grid;
+use mines_core::core::state::grid::Board;
 use rand::TryRng;
 use rand::rngs::SysRng;
 
@@ -33,7 +33,7 @@ fn test_generation() -> Result<(), &'static str> {
 
 fn test_solve() {
     let board = "100010001110111001100001000110000001110000110111000111000101001100010001011100011";
-    let grid = &mut Grid::from_mines(9, 9, (4, 4), board.chars().map(|c| c == '1').collect());
+    let grid = &mut Board::from_mines(9, 9, (4, 4), board.chars().map(|c| c == '1').collect());
     Solver::solve_grid(grid, 35).unwrap();
     println!("Grid: {}", grid);
 }

@@ -1,6 +1,9 @@
 use crate::core::state::*;
 use rand::prelude::IteratorRandom;
-use std::{fmt, ops};
+use std::{
+    fmt,
+    ops::{self, Deref, DerefMut},
+};
 
 #[derive(Clone)]
 pub struct Grid<T> {
@@ -171,7 +174,25 @@ impl<T> ops::IndexMut<(usize, usize)> for Grid<T> {
     }
 }
 
-impl Grid<Cell> {
+pub struct Board(grid::Grid<Cell>);
+
+impl Deref for Board {
+    type Target = grid::Grid<Cell>;
+
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl DerefMut for Board {
+    #[inline]
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl Board {
     /// Generate a grid randomly
     pub fn new_random(
         width: usize,
@@ -184,13 +205,13 @@ impl Grid<Cell> {
             start.0 < width && start.1 < height,
             "Starting co-ordinates out of bounds."
         );
-        let mut grid = Self::new(width, height);
+        let mut board = Board(Grid::new(width, height));
 
-        let mut valid_indices = Vec::with_capacity(grid.width() * grid.height());
-        for i in grid.range() {
-            let (x, y) = grid.to_coords(i);
+        let mut valid_indices = Vec::with_capacity(board.width() * board.height());
+        for i in board.range() {
+            let (x, y) = board.to_coords(i);
             if in_safe_area(start, (x, y)) {
-                grid[i].visibility = Visibility::Revealed;
+                board[i].visibility = Visibility::Revealed;
             } else {
                 valid_indices.push(i);
             }
@@ -203,11 +224,11 @@ impl Grid<Cell> {
             num_mines
         );
         for index in valid_indices.into_iter().sample(rng, num_mines) {
-            grid[index].is_mine = true;
+            board[index].is_mine = true;
         }
-        grid.generate_hints_from_mines();
+        board.generate_hints_from_mines();
 
-        grid
+        board
     }
 
     /// Generates a Grid out of a boolean list
@@ -218,7 +239,7 @@ impl Grid<Cell> {
             "Grid size does not match given dimensions."
         );
 
-        let mut grid: Grid<Cell> = Self {
+        let mut board: Board = Board(Grid {
             width,
             height,
             data: map
@@ -229,23 +250,24 @@ impl Grid<Cell> {
                     visibility: Visibility::Hidden,
                 })
                 .collect(),
-        };
+        });
 
-        for i in grid.range() {
-            let (x, y) = grid.to_coords(i);
+        for i in board.range() {
+            let (x, y) = board.to_coords(i);
 
             if start.0.abs_diff(x) <= 1 && start.1.abs_diff(y) <= 1 {
-                grid[i].visibility = Visibility::Revealed;
-                grid[i].is_mine = false;
+                board[i].visibility = Visibility::Revealed;
+                board[i].is_mine = false;
             }
         }
-        grid.generate_hints_from_mines();
+        board.generate_hints_from_mines();
 
-        grid
+        board
     }
 
     fn generate_hints_from_mines(&mut self) {
-        let mine_indices: Vec<usize> = self
+        let Board(grid) = self;
+        let mine_indices: Vec<usize> = grid
             .iter()
             .enumerate()
             .filter(|(_, cell)| cell.is_mine)
@@ -274,25 +296,27 @@ impl Grid<Cell> {
     }
 
     pub fn count_cells(&self, cell_type: Visibility) -> usize {
-        self.iter().filter(|c| c.visibility == cell_type).count()
+        let Board(grid) = self;
+        grid.iter().filter(|c| c.visibility == cell_type).count()
     }
 
     /// Returns a new Grid reset back to the initial state. Only the starting area is visible and
     /// rest of the cells are made hidden.
     pub fn clone_reset(&self, start: (usize, usize)) -> Self {
-        let mut grid = self.clone();
-        grid.iter_mut().enumerate().for_each(|(i, c)| {
+        let Board(grid) = self;
+        let mut grid2 = grid.clone();
+        grid2.iter_mut().enumerate().for_each(|(i, c)| {
             c.visibility = if in_safe_area(start, self.to_coords(i)) {
                 Visibility::Revealed
             } else {
                 Visibility::Hidden
             };
         });
-        grid
+        Board(grid2)
     }
 }
 
-impl fmt::Display for Grid<Cell> {
+impl fmt::Display for Board {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "[")?;
         for row in self.data.chunks(self.width) {
@@ -319,7 +343,7 @@ impl fmt::Display for Grid<Cell> {
     }
 }
 
-impl fmt::Debug for Grid<Cell> {
+impl fmt::Debug for Board {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "(123; 1: Visibility, 2: Mine, 3: Adjacent) [")?;
         write!(f, "    ")?;
@@ -351,7 +375,7 @@ impl fmt::Debug for Grid<Cell> {
     }
 }
 
-impl BoardInterface for Grid<Cell> {
+impl BoardInterface for Board {
     type Coords = (usize, usize);
 
     #[inline]
@@ -371,7 +395,8 @@ impl BoardInterface for Grid<Cell> {
 
     #[inline]
     fn get_total_mines(&self) -> usize {
-        (self as &Grid<Cell>).iter().filter(|c| c.is_mine).count()
+        let Board(grid) = self;
+        grid.iter().filter(|c| c.is_mine).count()
     }
 
     fn open(&mut self, coords: (usize, usize)) -> Result<usize, BoardError> {
@@ -403,9 +428,7 @@ impl BoardInterface for Grid<Cell> {
         cell.visibility
     }
 
-    fn iter(&self) -> impl Iterator<Item = (Visibility, Self::Coords)> {
-        (self as &Grid<Cell>)
-            .enumerate()
-            .map(|(i, c)| (c.visibility, i))
+    fn iter_cells(&self) -> impl Iterator<Item = (Visibility, Self::Coords)> {
+        (self as &Board).enumerate().map(|(i, c)| (c.visibility, i))
     }
 }

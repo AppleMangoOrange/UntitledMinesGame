@@ -94,5 +94,5 @@ pub trait BoardInterface {
     fn peek(&self, coords: Self::Coords) -> Visibility;
 
     /// Iterates through cells of the Board.
-    fn iter(&self) -> impl Iterator<Item = (Visibility, Self::Coords)>;
+    fn iter_cells(&self) -> impl Iterator<Item = (Visibility, Self::Coords)>;
 }

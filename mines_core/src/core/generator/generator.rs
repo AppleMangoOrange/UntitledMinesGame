@@ -7,9 +7,9 @@ use std::fmt;
 
 // use crate::core::solver::Solver as Solver1;
 use crate::core::{
-    state::grid::Grid,
+    state::grid::{Board, Grid},
     state::in_safe_area,
-    state::{BoardInterface, Cell, Visibility},
+    state::{BoardInterface, Visibility},
 };
 
 #[derive(Clone, Copy, Eq, PartialEq)]
@@ -61,7 +61,7 @@ impl Constraint {
         Some(self)
     }
 
-    pub fn from_grid(grid: &Grid<Cell>, (x, y): (usize, usize)) -> Option<Self> {
+    pub fn from_grid(grid: &Board, (x, y): (usize, usize)) -> Option<Self> {
         debug!("New constraint centered at ({:#3x}, {:#3x})...", x, y);
         debug!("Grid: {:?}", grid);
         let mut mask = 0u16;
@@ -241,7 +241,7 @@ impl Default for SolverOptions {
 }
 
 pub struct Solver<'a> {
-    grid: &'a mut Grid<Cell>,
+    board: &'a mut Board,
     num_mines: usize,
     /// Replacement of squaretodo in mines.c. Queue of index of cells which have not been
     /// considered. Newly updated cells are added here.
@@ -257,20 +257,22 @@ pub struct Solver<'a> {
 
 impl<'a> Solver<'a> {
     // Initialises `todo` with all currently revealed cells
-    fn init(grid: &'a mut Grid<Cell>, num_mines: usize) -> Self {
-        let mut cell_todo = VecDeque::with_capacity(grid.len());
+    fn init(board: &'a mut Board, num_mines: usize) -> Self {
+        let mut cell_todo = VecDeque::with_capacity(board.len());
 
-        for (i, &cell) in grid.iter().enumerate() {
+        for (i, &cell) in board.iter().enumerate() {
             if cell.visibility == Visibility::Revealed {
                 cell_todo.push_back(i);
             }
         }
 
+        let width = board.width();
+        let height = board.height();
         Self {
-            constraints: Grid::new(grid.width(), grid.height()),
+            board,
             num_mines,
-            grid,
             cell_todo,
+            constraints: Grid::new(width, height),
             constraints_todo: VecDeque::new(),
             options: SolverOptions::default(),
         }
@@ -304,11 +306,11 @@ impl<'a> Solver<'a> {
     }
 
     fn known_cell(&mut self, (x, y): (usize, usize), cell_type: Visibility) {
-        let index = self.grid.to_index(x, y);
-        if self.grid[index].visibility != Visibility::Hidden {
+        let index = self.board.to_index(x, y);
+        if self.board[index].visibility != Visibility::Hidden {
             return;
         }
-        self.grid[index].visibility = cell_type;
+        self.board[index].visibility = cell_type;
         self.cell_todo.push_back(index);
         debug!(
             "Updated visibility of ({x:#5x}, {y:#5x}) to {} and added to todo queue.",
@@ -323,13 +325,13 @@ impl<'a> Solver<'a> {
     fn solve_dequeue_cell_todo(&mut self) -> bool {
         let mut done_something = false;
         while let Some(index) = self.cell_todo.pop_front() {
-            let (x, y) = self.grid.to_coords(index);
-            let cell_visibility = self.grid[index].visibility;
+            let (x, y) = self.board.to_coords(index);
+            let cell_visibility = self.board[index].visibility;
             done_something = true;
             // Creates a constraint for newly discovered open cells and manages
             // trivial resolution.
             if cell_visibility == Visibility::Revealed {
-                if let Some(constraint) = Constraint::from_grid(self.grid, (x, y)) {
+                if let Some(constraint) = Constraint::from_grid(self.board, (x, y)) {
                     debug!("New constraint from cell ({x:#5x}, {y:#5x}).");
                     self.insert_constraint(constraint);
                 }
@@ -340,7 +342,7 @@ impl<'a> Solver<'a> {
             let mut to_insert = Vec::new();
 
             for c_i in self
-                .grid
+                .board
                 .get_relative_indices((x, y), -2..=0, -2..=0)
                 .flatten()
             {
@@ -395,8 +397,8 @@ impl<'a> Solver<'a> {
             let (x, y) = (c1.x, c1.y);
 
             let mut overlaps = Vec::new();
-            for yy in y.saturating_sub(2)..(y + 3).min(self.grid.height()) {
-                for xx in x.saturating_sub(2)..(x + 3).min(self.grid.width()) {
+            for yy in y.saturating_sub(2)..(y + 3).min(self.board.height()) {
+                for xx in x.saturating_sub(2)..(x + 3).min(self.board.width()) {
                     let bucket = &self.constraints[(xx, yy)];
                     for &c2 in bucket {
                         if c1 != c2 && c1.munge(c2, false) != 0 {
@@ -550,8 +552,8 @@ impl<'a> Solver<'a> {
     /// solve the trivial set. Returns whether any progress was made.
     #[inline]
     fn solve_total_mines_count(&mut self) -> bool {
-        let mines_left = self.num_mines - self.grid.count_cells(Visibility::Flagged);
-        let hidden_left = self.grid.count_cells(Visibility::Hidden);
+        let mines_left = self.num_mines - self.board.count_cells(Visibility::Flagged);
+        let hidden_left = self.board.count_cells(Visibility::Hidden);
         if mines_left == 0 || mines_left == hidden_left {
             let new_visibility = if mines_left == 0 {
                 Visibility::Revealed
@@ -559,11 +561,11 @@ impl<'a> Solver<'a> {
                 Visibility::Flagged
             };
             debug!("Global trivial resolution: Remaining hidden cells are {new_visibility}.");
-            for i in 0..self.grid.len() {
-                if !(self.grid[i].visibility == Visibility::Hidden) {
+            for i in 0..self.board.len() {
+                if !(self.board[i].visibility == Visibility::Hidden) {
                     continue;
                 }
-                self.known_cell(self.grid.to_coords(i), new_visibility);
+                self.known_cell(self.board.to_coords(i), new_visibility);
             }
             return true;
         }
@@ -584,16 +586,16 @@ impl<'a> Solver<'a> {
                 "Global resolution by disjoint sets: Disjoint hidden cells outside {disjoint_union:?} are {new_visibility}."
             );
 
-            for i in 0..self.grid.len() {
-                if !(self.grid[i].visibility == Visibility::Hidden) {
+            for i in 0..self.board.len() {
+                if !(self.board[i].visibility == Visibility::Hidden) {
                     continue;
                 }
-                let coords = self.grid.to_coords(i);
+                let coords = self.board.to_coords(i);
                 debug!("Checking ({:#5x}, {:#5x})", coords.0, coords.1);
 
                 let outside_union = disjoint_union.iter().all(|c| !c.contains(coords));
                 if outside_union {
-                    self.known_cell(self.grid.to_coords(i), new_visibility);
+                    self.known_cell(self.board.to_coords(i), new_visibility);
                 }
             }
 
@@ -608,7 +610,7 @@ impl<'a> Solver<'a> {
             if log_enabled!(log::Level::Debug) {
                 debug!("Solver-Generator iteration starting...");
                 debug!("Todo indices: {:?}", self.cell_todo);
-                debug!("Grid: {:?}", self.grid);
+                debug!("Grid: {:?}", self.board);
             }
             let done_something;
             if !self.cell_todo.is_empty() {
@@ -627,7 +629,7 @@ impl<'a> Solver<'a> {
                 done_something = self.solve_total_mines_count()
             }
 
-            let hidden_left = self.grid.count_cells(Visibility::Hidden);
+            let hidden_left = self.board.count_cells(Visibility::Hidden);
             if !done_something && hidden_left > 0 {
                 debug!("Unable to solve grid.");
                 break Err(());
@@ -639,7 +641,7 @@ impl<'a> Solver<'a> {
     }
 
     /// Creates a new solver instance and solves `grid` in place.
-    pub fn solve_grid(grid: &mut Grid<Cell>, num_mines: usize) -> Result<(), ()> {
+    pub fn solve_grid(grid: &mut Board, num_mines: usize) -> Result<(), ()> {
         let mut s = Solver::init(grid, num_mines);
         s.solve()
     }
@@ -655,12 +657,12 @@ impl<'a> Solver<'a> {
         let mut first_neighbours: Option<Vec<usize>> = None;
 
         for (nx, ny) in masked {
-            let n_index = self.grid.to_index(nx, ny);
+            let n_index = self.board.to_index(nx, ny);
             let mut revealed_neighbours: Vec<usize> = self
-                .grid
+                .board
                 .get_adjacent_indices(n_index)
                 .flatten()
-                .filter(|&i| self.grid[i].visibility == Visibility::Revealed)
+                .filter(|&i| self.board[i].visibility == Visibility::Revealed)
                 .collect();
 
             revealed_neighbours.sort_unstable();
@@ -686,16 +688,16 @@ impl<'a> Solver<'a> {
             .chain(was_open.iter().map(|&i| (i, 1i8)));
 
         for (cell_index, delta) in changes {
-            for ni in self.grid.get_adjacent_indices(cell_index).flatten() {
-                self.grid[ni].adjacent_mines = self.grid[ni]
+            for ni in self.board.get_adjacent_indices(cell_index).flatten() {
+                self.board[ni].adjacent_mines = self.board[ni]
                         .adjacent_mines
                         .checked_add_signed(delta)
                         .unwrap_or_else(|| {
-                            let (x, y) = self.grid.to_coords(cell_index);
-                            let (nx, ny) = self.grid.to_coords(ni);
+                            let (x, y) = self.board.to_coords(cell_index);
+                            let (nx, ny) = self.board.to_coords(ni);
                             panic!(
                             "Adding/Subtracting out of bounds: tried {} + {} for neighbour {:?} of cell {:?}.",
-                            self.grid[ni].adjacent_mines, delta, (nx, ny), (x, y)
+                            self.board[ni].adjacent_mines, delta, (nx, ny), (x, y)
                         )});
             }
         }
@@ -720,14 +722,14 @@ impl<'a> Solver<'a> {
         for dy in 0..patch_size {
             for dx in 0..patch_size {
                 let (x, y) = (patch.0 + dx, patch.1 + dy);
-                if x >= self.grid.width() || y >= self.grid.height() {
+                if x >= self.board.width() || y >= self.board.height() {
                     continue;
                 }
                 if in_safe_area(start, (x, y)) {
                     continue;
                 }
-                let index = self.grid.to_index(x, y);
-                let cell = &mut self.grid[index];
+                let index = self.board.to_index(x, y);
+                let cell = &mut self.board[index];
                 if cell.visibility == Visibility::Hidden
                     || (shuffle_flagged && cell.visibility == Visibility::Flagged)
                 {
@@ -757,23 +759,24 @@ impl<'a> Solver<'a> {
             } else {
                 was_open.push(i);
             }
-            self.grid[i].is_mine = true;
+            self.board[i].is_mine = true;
         });
 
         self.update_grid(&was_mine, &was_open);
 
-        for y in patch.1.saturating_sub(2)..=(patch.1 + patch_size).min(self.grid.height() - 1) {
-            for x in patch.0.saturating_sub(2)..=(patch.0 + patch_size).min(self.grid.width() - 1) {
+        for y in patch.1.saturating_sub(2)..=(patch.1 + patch_size).min(self.board.height() - 1) {
+            for x in patch.0.saturating_sub(2)..=(patch.0 + patch_size).min(self.board.width() - 1)
+            {
                 self.constraints[(x, y)].clear();
             }
         }
-        for y in patch.1.saturating_sub(3)..=(patch.1 + patch_size + 1).min(self.grid.height() - 1)
+        for y in patch.1.saturating_sub(3)..=(patch.1 + patch_size + 1).min(self.board.height() - 1)
         {
             for x in
-                patch.0.saturating_sub(3)..=(patch.0 + patch_size + 1).min(self.grid.width() - 1)
+                patch.0.saturating_sub(3)..=(patch.0 + patch_size + 1).min(self.board.width() - 1)
             {
-                let index = self.grid.to_index(x, y);
-                if self.grid[index].visibility == Visibility::Revealed {
+                let index = self.board.to_index(x, y);
+                if self.board[index].visibility == Visibility::Revealed {
                     self.cell_todo.push_back(index);
                 }
             }
@@ -790,19 +793,20 @@ impl<'a> Solver<'a> {
         rng: &mut impl rand::Rng,
         &patch_size: &'static usize,
     ) {
-        let grid_density = self.num_mines as f32 / (self.grid.width() * self.grid.height()) as f32;
+        let grid_density =
+            self.num_mines as f32 / (self.board.width() * self.board.height()) as f32;
         let local_density = {
             let start = 1.5f32 - patch_size as f32 / 2f32;
             let end = patch_size as f32 / 2f32 + 1f32;
             let num_mines = self
-                .grid
+                .board
                 .get_relative_indices(
                     (constraint.x, constraint.y),
                     start as isize..=end as isize,
                     start as isize..=end as isize,
                 )
                 .flatten()
-                .filter(|&i| self.grid[i].is_mine)
+                .filter(|&i| self.board[i].is_mine)
                 .count();
             num_mines
         } as f32
@@ -817,23 +821,23 @@ impl<'a> Solver<'a> {
         }
 
         let mut priority_pools: [Vec<usize>; 3] = Default::default();
-        for i in self.grid.range() {
-            let (x, y) = self.grid.to_coords(i);
+        for i in self.board.range() {
+            let (x, y) = self.board.to_coords(i);
 
-            if self.grid[i].is_mine != to_saturate
+            if self.board[i].is_mine != to_saturate
                 || in_safe_area(start, (x, y))
                 || constraint.contains((x, y))
             {
                 continue;
             }
 
-            let pool_index = match self.grid[i].visibility {
+            let pool_index = match self.board[i].visibility {
                 Visibility::Hidden => {
                     let is_frontier = self
-                        .grid
+                        .board
                         .get_adjacent_indices(i)
                         .flatten()
-                        .any(|n| self.grid[n].visibility == Visibility::Revealed);
+                        .any(|n| self.board[n].visibility == Visibility::Revealed);
                     if is_frontier { 0 } else { 1 }
                 }
                 Visibility::Revealed | Visibility::Flagged => 2,
@@ -861,20 +865,20 @@ impl<'a> Solver<'a> {
         let mut was_mine = Vec::new();
         let mut was_open = Vec::new();
         for (x, y) in constraint.masked_cells() {
-            let index = self.grid.to_index(x, y);
-            if self.grid[index].is_mine == to_saturate {
+            let index = self.board.to_index(x, y);
+            if self.board[index].is_mine == to_saturate {
                 continue;
             }
             let swapped_index: usize = selected
                 .pop()
                 .expect("Grid has less cells than masked cells in constraint.");
             if log_enabled!(Level::Debug) {
-                let (sx, sy) = self.grid.to_coords(swapped_index);
+                let (sx, sy) = self.board.to_coords(swapped_index);
                 debug!("Swapping ({x:#5x}, {y:#5x}) with ({sx:#5x}, {sy:#5x}).");
             }
-            self.grid[index].is_mine = to_saturate;
-            self.grid[swapped_index].is_mine = !to_saturate;
-            self.grid[swapped_index].visibility = Visibility::Hidden;
+            self.board[index].is_mine = to_saturate;
+            self.board[swapped_index].is_mine = !to_saturate;
+            self.board[swapped_index].visibility = Visibility::Hidden;
 
             if to_saturate {
                 was_mine.push(swapped_index);
@@ -896,19 +900,19 @@ impl<'a> Solver<'a> {
         self.update_grid(&was_mine, &was_open);
 
         for &cell_index in was_mine.iter().chain(was_open.iter()) {
-            let cell_coords = self.grid.to_coords(cell_index);
+            let cell_coords = self.board.to_coords(cell_index);
             debug!(
                 "Updating constraints around ({:#5x}, {:#5x}).",
                 cell_coords.0, cell_coords.1
             );
-            self.grid // Could try iterating through all existing constraints instead.
+            self.board // Could try iterating through all existing constraints instead.
                 .get_relative_indices(cell_coords, -2..=0, -2..=0)
                 .flatten()
                 .for_each(|i| self.constraints[i].retain(|c| !c.contains(cell_coords)));
-            self.grid
+            self.board
                 .get_relative_indices(cell_coords, -2..=2, -2..=2)
                 .flatten()
-                .filter(|&i| self.grid[i].visibility == Visibility::Revealed)
+                .filter(|&i| self.board[i].visibility == Visibility::Revealed)
                 .for_each(|i| self.cell_todo.push_back(i));
         }
     }
@@ -939,15 +943,15 @@ impl<'a> Solver<'a> {
         } else {
             debug!("No existing constraints. Picking patch from frontier.");
             let frontier: Vec<(usize, usize)> = self
-                .grid
+                .board
                 .enumerate()
                 .filter(|&((x, y), c)| {
                     c.visibility == Visibility::Hidden
                         && self
-                            .grid
+                            .board
                             .get_relative_indices((x, y), -1..=1, -1..=1)
                             .flatten()
-                            .any(|n| self.grid[n].visibility == Visibility::Hidden)
+                            .any(|n| self.board[n].visibility == Visibility::Hidden)
                     // .any(|n| self.grid[n].visibility == Visibility::Flagged)
                     // TODO: check visibility criteria (caused generating unsolvable boards)
                 })
@@ -974,7 +978,7 @@ impl<'a> Solver<'a> {
         start: (usize, usize),
         rng: &mut impl rand::Rng,
     ) -> Result<(), ()> {
-        info!("Initial grid: {:?}", self.grid);
+        info!("Initial grid: {:?}", self.board);
         let mut num_perturbs = 0;
         while self.solve().is_err() {
             if num_perturbs >= self.options.max_perturbations {
@@ -1003,10 +1007,10 @@ pub fn new_with_mines(
     solvable: bool,
     start: (usize, usize),
     seed: u64,
-) -> (Grid<Cell>, bool) {
+) -> (Board, bool) {
     info!("Generating new game with seed {seed}");
     let mut random = rngs::Xoshiro128PlusPlus::seed_from_u64(seed);
-    let mut grid = Grid::new_random(width, height, start, &mut random, num_mines);
+    let mut grid = Board::new_random(width, height, start, &mut random, num_mines);
 
     if solvable {
         let res = {
@@ -1028,7 +1032,7 @@ mod tests {
     use rand::{SeedableRng, rngs::StdRng};
 
     /// Construct a grid from string, with `*` as mines and other characters as open cells
-    fn grid_from_ascii(grid: &[&str], start: (usize, usize)) -> Grid<Cell> {
+    fn grid_from_ascii(grid: &[&str], start: (usize, usize)) -> Board {
         let height = grid.len();
         let width = grid[0].len();
         let mut map = Vec::with_capacity(width * height);
@@ -1039,7 +1043,7 @@ mod tests {
             }
         }
 
-        Grid::from_mines(width, height, start, map)
+        Board::from_mines(width, height, start, map)
     }
 
     #[test]
@@ -1084,7 +1088,7 @@ mod tests {
         let height = 16;
         let start = (width / 2, height / 2);
         let num_mines = 200;
-        let mut grid = Grid::new_random(width, height, start, &mut rng, num_mines);
+        let mut grid = Board::new_random(width, height, start, &mut rng, num_mines);
         let mut generator = Solver::init(&mut grid, num_mines);
         generator
             .solve_generate(start, &mut rng)
