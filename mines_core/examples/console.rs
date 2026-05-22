@@ -1,4 +1,4 @@
-use mines_core::core::generator::generator::*;
+use mines_core::core::generator::st::*;
 use mines_core::core::state::grid::Board;
 use rand::TryRng;
 use rand::rngs::SysRng;

@@ -1,9 +1,10 @@
-use crate::core::state::*;
 use rand::prelude::IteratorRandom;
 use std::{
     fmt,
-    ops::{self, Deref, DerefMut},
+    ops::{self, Bound, Deref, DerefMut},
 };
+
+use super::*;
 
 #[derive(Clone)]
 pub struct Grid<T> {
@@ -126,6 +127,15 @@ impl<T> Grid<T> {
     pub fn contains(&self, (x, y): (usize, usize)) -> bool {
         x < self.width && y < self.height
     }
+
+    #[inline]
+    pub fn check_bounds(&self, (x, y): (isize, isize)) -> Option<(usize, usize)> {
+        if x < 0 || y < 0 || x > self.width as isize || y > self.height as isize {
+            None
+        } else {
+            Some((x as usize, y as usize))
+        }
+    }
 }
 
 impl<T: fmt::Display> fmt::Display for Grid<T> {
@@ -174,21 +184,26 @@ impl<T> ops::IndexMut<(usize, usize)> for Grid<T> {
     }
 }
 
-pub struct Board(grid::Grid<Cell>);
+// impl<T, I> ops::Index<(I, I)> for Grid<T> where I: SliceIndex<usize> {}
+
+pub struct Board {
+    grid: Grid<Cell>,
+    num_mines: usize,
+}
 
 impl Deref for Board {
     type Target = grid::Grid<Cell>;
 
     #[inline]
     fn deref(&self) -> &Self::Target {
-        &self.0
+        &self.grid
     }
 }
 
 impl DerefMut for Board {
     #[inline]
     fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
+        &mut self.grid
     }
 }
 
@@ -205,7 +220,10 @@ impl Board {
             start.0 < width && start.1 < height,
             "Starting co-ordinates out of bounds."
         );
-        let mut board = Board(Grid::new(width, height));
+        let mut board = Board {
+            grid: Grid::new(width, height),
+            num_mines,
+        };
 
         let mut valid_indices = Vec::with_capacity(board.width() * board.height());
         for i in board.range() {
@@ -239,18 +257,21 @@ impl Board {
             "Grid size does not match given dimensions."
         );
 
-        let mut board: Board = Board(Grid {
-            width,
-            height,
-            data: map
-                .iter()
-                .map(|&c| Cell {
-                    is_mine: c,
-                    adjacent_mines: 0,
-                    visibility: Visibility::Hidden,
-                })
-                .collect(),
-        });
+        let mut board: Board = Board {
+            grid: Grid {
+                width,
+                height,
+                data: map
+                    .iter()
+                    .map(|&c| Cell {
+                        is_mine: c,
+                        adjacent_mines: 0,
+                        visibility: Visibility::Hidden,
+                    })
+                    .collect(),
+            },
+            num_mines: map.iter().filter(|&&b| b).count(),
+        };
 
         for i in board.range() {
             let (x, y) = board.to_coords(i);
@@ -266,7 +287,7 @@ impl Board {
     }
 
     fn generate_hints_from_mines(&mut self) {
-        let Board(grid) = self;
+        let grid = &self.grid;
         let mine_indices: Vec<usize> = grid
             .iter()
             .enumerate()
@@ -286,6 +307,7 @@ impl Board {
     }
 
     /// Re-calculates the hint for the cell at the given index
+    #[inline]
     pub fn compute_mines(&mut self, index: usize) {
         let mines_count = self
             .get_adjacent_indices(index)
@@ -295,15 +317,16 @@ impl Board {
         self[index].adjacent_mines = mines_count as u8;
     }
 
+    #[inline]
     pub fn count_cells(&self, cell_type: Visibility) -> usize {
-        let Board(grid) = self;
+        let grid = &self.grid;
         grid.iter().filter(|c| c.visibility == cell_type).count()
     }
 
     /// Returns a new Grid reset back to the initial state. Only the starting area is visible and
     /// rest of the cells are made hidden.
     pub fn clone_reset(&self, start: (usize, usize)) -> Self {
-        let Board(grid) = self;
+        let grid = &self.grid;
         let mut grid2 = grid.clone();
         grid2.iter_mut().enumerate().for_each(|(i, c)| {
             c.visibility = if in_safe_area(start, self.to_coords(i)) {
@@ -312,7 +335,10 @@ impl Board {
                 Visibility::Hidden
             };
         });
-        Board(grid2)
+        Board {
+            grid: grid2,
+            num_mines: self.num_mines,
+        }
     }
 }
 
@@ -375,6 +401,10 @@ impl fmt::Debug for Board {
     }
 }
 
+impl Coordinate for (usize, usize) {
+    type Unbounded = (isize, isize);
+}
+
 impl BoardInterface for Board {
     type Coords = (usize, usize);
 
@@ -394,41 +424,86 @@ impl BoardInterface for Board {
     }
 
     #[inline]
-    fn get_total_mines(&self) -> usize {
-        let Board(grid) = self;
-        grid.iter().filter(|c| c.is_mine).count()
+    fn get_num_mines(&self) -> usize {
+        self.num_mines
     }
 
-    fn open(&mut self, coords: (usize, usize)) -> Result<usize, BoardError> {
-        let cell = self[coords];
+    fn open(&mut self, coords: Self::Coords) -> Result<usize, BoardError> {
+        if coords.0 > self.width || coords.1 > self.height {
+            return Err(BoardError::CoordinatesOutOfBounds);
+        }
+        let cell = &mut self[coords];
         match cell.visibility {
             Visibility::Revealed => Ok(cell.adjacent_mines as usize),
             Visibility::Flagged => Err(BoardError::OpenFlagged),
             Visibility::Hidden => match cell.is_mine {
                 true => Err(BoardError::OpenMine),
-                false => Ok(cell.adjacent_mines as usize),
+                false => {
+                    cell.visibility = Visibility::Revealed;
+                    Ok(cell.adjacent_mines as usize)
+                }
             },
         }
     }
 
-    fn flag(&mut self, coords: (usize, usize)) -> Result<(), BoardError> {
-        let cell = self[coords];
+    fn flag(&mut self, coords: Self::Coords) -> Result<(), BoardError> {
+        if coords.0 > self.width || coords.1 > self.height {
+            return Err(BoardError::CoordinatesOutOfBounds);
+        }
+        let cell = &mut self[coords];
         match cell.visibility {
             Visibility::Revealed => Err(BoardError::FlagRevealed),
             Visibility::Flagged => Ok(()),
             Visibility::Hidden => match cell.is_mine {
-                true => Ok(()),
+                true => {
+                    cell.visibility = Visibility::Flagged;
+                    Ok(())
+                }
                 false => Err(BoardError::FlagOpen),
             },
         }
     }
 
-    fn peek(&self, coords: (usize, usize)) -> Visibility {
+    #[inline]
+    fn peek(&self, coords: Self::Coords) -> Visibility {
         let cell = self[coords];
         cell.visibility
     }
 
-    fn iter_cells(&self) -> impl Iterator<Item = (Visibility, Self::Coords)> {
-        (self as &Board).enumerate().map(|(i, c)| (c.visibility, i))
+    fn get_hint(&self, coords: Self::Coords) -> Option<usize> {
+        let cell = self[coords];
+        if cell.visibility == Visibility::Revealed {
+            Some(cell.adjacent_mines as usize)
+        } else {
+            None
+        }
+    }
+
+    fn get_region<R>(&self, range: R) -> impl Iterator<Item = Option<Self::Coords>> + use<R>
+    where
+        R: RangeBounds<<Self::Coords as Coordinate>::Unbounded>,
+    {
+        let (start_x, start_y) = match range.start_bound() {
+            Bound::Included(s) => *s,
+            Bound::Excluded(s) => (s.0 + 1, s.1 + 1),
+            Bound::Unbounded => (0, 0),
+        };
+        let (end_x, end_y) = match range.end_bound() {
+            Bound::Included(s) => (s.0 + 1, s.1 + 1),
+            Bound::Excluded(s) => *s,
+            Bound::Unbounded => (self.width as isize, self.height as isize),
+        };
+        let width = self.width as isize;
+        let height = self.height as isize;
+
+        (start_y..end_y).flat_map(move |y| {
+            (start_x..end_x).map(move |x| {
+                if x < 0 || y < 0 || x >= width as isize || y >= height as isize {
+                    None
+                } else {
+                    Some((x as usize, y as usize))
+                }
+            })
+        })
     }
 }

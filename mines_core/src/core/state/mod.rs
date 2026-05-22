@@ -1,6 +1,9 @@
 pub mod grid;
 
-use std::{fmt, ops::RangeInclusive};
+use std::{
+    fmt::{self, Debug},
+    ops::{RangeBounds, RangeInclusive},
+};
 
 const GUARANTEED_SAFE: (RangeInclusive<isize>, RangeInclusive<isize>) = (-1..=1, 0..=0); // (-1..=1, -1..=1);
 
@@ -63,7 +66,9 @@ impl Cell {
     }
 }
 
+#[derive(Debug)]
 pub enum BoardError {
+    CoordinatesOutOfBounds,
     /// Trying to open a flagged cell
     OpenFlagged,
     /// Trying to open a mine (lose condition)
@@ -74,9 +79,14 @@ pub enum BoardError {
     FlagOpen,
 }
 
+pub trait Coordinate: Clone {
+    /// The signed version of this coordinate system
+    type Unbounded: Clone;
+}
+
 /// Acts as an API for Boards to restrict access only to gameplay-accessible data.
-pub trait BoardInterface {
-    type Coords;
+pub trait BoardInterface: Debug {
+    type Coords: Coordinate;
 
     /// Total number of cells in the board
     fn len(&self) -> usize;
@@ -84,7 +94,7 @@ pub trait BoardInterface {
     fn width(&self) -> usize;
     /// Vertical axis
     fn height(&self) -> usize;
-    fn get_total_mines(&self) -> usize;
+    fn get_num_mines(&self) -> usize;
 
     /// Opens the cell at `coords`, returns Ok(hint) or Err(()) if opened a mine.
     fn open(&mut self, coords: Self::Coords) -> Result<usize, BoardError>;
@@ -92,7 +102,24 @@ pub trait BoardInterface {
     fn flag(&mut self, coords: Self::Coords) -> Result<(), BoardError>;
     /// Displays the visibility of the cell at `coords`.
     fn peek(&self, coords: Self::Coords) -> Visibility;
+    fn get_hint(&self, coords: Self::Coords) -> Option<usize>;
 
-    /// Iterates through cells of the Board.
-    fn iter_cells(&self) -> impl Iterator<Item = (Visibility, Self::Coords)>;
+    /// Iterates through the given region of the Board.
+    fn get_region<R>(&self, range: R) -> impl Iterator<Item = Option<Self::Coords>> + use<Self, R>
+    where
+        R: RangeBounds<<Self::Coords as Coordinate>::Unbounded>;
+
+    /// Iterates through all cells of the Board.
+    #[inline]
+    fn iter_cells(&self) -> impl Iterator<Item = Self::Coords> + use<Self> {
+        return self.get_region(..).flatten();
+    }
+
+    /// Counts cells of a specific type by iterating over the board.
+    #[inline]
+    fn count_cells(&self, visibility: Visibility) -> usize {
+        self.iter_cells()
+            .filter(|c| self.peek(c.clone()) == visibility)
+            .count()
+    }
 }
