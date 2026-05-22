@@ -93,6 +93,11 @@ where
         }
     }
 
+    fn remove_constraint(&mut self, constraint: &Constraint<Coords>) {
+        self.constraints[(constraint.coords.0, constraint.coords.1)].retain(|c| c != constraint);
+        self.constraints_todo.retain(|c| c != constraint);
+    }
+
     /// Helper function for `solve()`. Dequeues the cell todo list, creating constrinats for open
     /// cells and updating existing constraints for open flagged cells. Returns whether any
     /// progress was made.
@@ -380,7 +385,7 @@ where
     {
         loop {
             if log_enabled!(log::Level::Debug) {
-                debug!("Solver-Generator iteration starting...");
+                debug!("Solver iteration starting...");
                 debug!("Todo indices: {:?}", self.cell_todo);
                 debug!("Grid: {:?}", self.board);
             }
@@ -413,47 +418,18 @@ where
     }
 }
 
-impl<'a, B> Solver<'a, B, Coords> for StSolver<'a, B>
+impl<'a, B> Solver<B> for StSolver<'a, B>
 where
     B: BoardInterface<Coords = Coords>,
 {
-    fn new(board: &'a mut B, options: SolverOptions) -> Self {
-        Self::init(board, options)
-    }
-
-    fn solve(&mut self) -> Result<(), ()> {
-        self.solver_loop()
-    }
-
-    #[inline]
-    fn add_new_cell(&mut self, coords: Coords) {
-        self.cell_todo.push_back(coords);
-    }
-
-    #[inline]
-    fn get_constraints(&mut self) -> &mut Grid<Vec<Constraint<Coords>>> {
-        &mut self.constraints
-    }
-
-    #[inline]
-    fn clear_constraints_at(&mut self, coords: Coords)
-    where
-        Grid<Vec<Constraint<Coords>>>: std::ops::IndexMut<Coords, Output = Vec<Constraint<Coords>>>,
-    {
-        self.constraints[(coords.0.saturating_sub(1), coords.1.saturating_sub(1))].clear();
-    }
-
-    fn clear_constraints_containing(&mut self, coords: Coords) {
-        let region =
-            (coords.0 as isize - 2, coords.1 as isize - 2)..=(coords.0 as isize, coords.1 as isize);
-        for coords in self.board.get_region(region).flatten() {
-            self.constraints[coords].retain(|c| !c.contains(coords));
-            self.constraints_todo.retain(|c| !c.contains(coords));
+    fn solve_with_options(
+        board: &mut B,
+        options: SolverOptions,
+    ) -> Result<(), Grid<Vec<Constraint<Coords>>>> {
+        let mut solver = StSolver::init(board, options);
+        match solver.solver_loop() {
+            Ok(()) => Ok(()),
+            Err(()) => Err(solver.constraints),
         }
-    }
-
-    fn remove_constraint(&mut self, constraint: &Constraint<Coords>) {
-        self.constraints[(constraint.coords.0, constraint.coords.1)].retain(|c| c != constraint);
-        self.constraints_todo.retain(|c| c != constraint);
     }
 }

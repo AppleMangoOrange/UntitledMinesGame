@@ -1,5 +1,5 @@
 use log::debug;
-use std::{cmp::Ordering, collections::VecDeque, fmt, ops::IndexMut};
+use std::{cmp::Ordering, collections::VecDeque, fmt};
 
 use crate::core::state::grid::Grid;
 
@@ -7,6 +7,7 @@ use super::state::{BoardInterface, Visibility};
 
 pub mod st;
 
+#[derive(Clone, Copy)]
 pub struct SolverOptions {
     pub max_disjoint_union_recursion_depth: usize,
     pub max_perturbations: usize,
@@ -21,23 +22,18 @@ impl Default for SolverOptions {
     }
 }
 
-pub trait Solver<'a, Board, C> {
-    fn new(board: &'a mut Board, options: SolverOptions) -> Self
-    where
-        Board: BoardInterface<Coords = C>;
-    fn solve(&mut self) -> Result<(), ()>;
-    /// Add a newly known/changed cell during generation.
-    fn add_new_cell(&mut self, coords: C);
-    fn get_constraints(&mut self) -> &mut Grid<Vec<Constraint<C>>>;
-    /// Deletes all constraints relating to the given coordinates, regardless of whether the given
-    /// coordinates are considered in the rules. To be used during generation.
-    fn clear_constraints_at(&mut self, coords: C)
-    where
-        Grid<Vec<Constraint<C>>>: IndexMut<C, Output = Vec<Constraint<C>>>;
-    /// Deletes all constraints that consider the given coordinates in the rule. To be used during generation.
-    fn clear_constraints_containing(&mut self, coords: C);
-    /// Deletes the specific given constraint.
-    fn remove_constraint(&mut self, constraint: &Constraint<C>);
+pub trait Solver<B>
+where
+    B: BoardInterface,
+{
+    fn solve_with_options(
+        board: &mut B,
+        options: SolverOptions,
+    ) -> Result<(), Grid<Vec<Constraint<B::Coords>>>>;
+
+    fn solve(board: &mut B) -> Result<(), Grid<Vec<Constraint<B::Coords>>>> {
+        Self::solve_with_options(board, SolverOptions::default())
+    }
 }
 
 /// Replacement of `set` in mines.c. 3x3 square of cells storing mine location and count.

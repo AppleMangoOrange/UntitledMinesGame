@@ -90,6 +90,12 @@ impl<T> Grid<T> {
 
     /// Converts given co-ordinates to grid index without checking for bounds
     #[inline]
+    fn to_coords_raw(width: usize, index: usize) -> (usize, usize) {
+        (index % width, index / width)
+    }
+
+    /// Converts given co-ordinates to grid index without checking for bounds
+    #[inline]
     pub fn to_index(&self, x: usize, y: usize) -> usize {
         y * self.width + x
     }
@@ -184,8 +190,7 @@ impl<T> ops::IndexMut<(usize, usize)> for Grid<T> {
     }
 }
 
-// impl<T, I> ops::Index<(I, I)> for Grid<T> where I: SliceIndex<usize> {}
-
+#[derive(Clone)]
 pub struct Board {
     grid: Grid<Cell>,
     num_mines: usize,
@@ -276,7 +281,7 @@ impl Board {
         for i in board.range() {
             let (x, y) = board.to_coords(i);
 
-            if start.0.abs_diff(x) <= 1 && start.1.abs_diff(y) <= 1 {
+            if in_safe_area(start, (x, y)) {
                 board[i].visibility = Visibility::Revealed;
                 board[i].is_mine = false;
             }
@@ -321,24 +326,6 @@ impl Board {
     pub fn count_cells(&self, cell_type: Visibility) -> usize {
         let grid = &self.grid;
         grid.iter().filter(|c| c.visibility == cell_type).count()
-    }
-
-    /// Returns a new Grid reset back to the initial state. Only the starting area is visible and
-    /// rest of the cells are made hidden.
-    pub fn clone_reset(&self, start: (usize, usize)) -> Self {
-        let grid = &self.grid;
-        let mut grid2 = grid.clone();
-        grid2.iter_mut().enumerate().for_each(|(i, c)| {
-            c.visibility = if in_safe_area(start, self.to_coords(i)) {
-                Visibility::Revealed
-            } else {
-                Visibility::Hidden
-            };
-        });
-        Board {
-            grid: grid2,
-            num_mines: self.num_mines,
-        }
     }
 }
 
@@ -477,6 +464,17 @@ impl BoardInterface for Board {
         } else {
             None
         }
+    }
+
+    fn reset(&mut self, start: Self::Coords) {
+        let width = self.width;
+        self.iter_mut().enumerate().for_each(|(i, c)| {
+            c.visibility = if in_safe_area(start, Grid::<Cell>::to_coords_raw(width, i)) {
+                Visibility::Revealed
+            } else {
+                Visibility::Hidden
+            };
+        });
     }
 
     fn get_region<R>(&self, range: R) -> impl Iterator<Item = Option<Self::Coords>> + use<R>

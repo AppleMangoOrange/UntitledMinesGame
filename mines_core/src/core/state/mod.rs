@@ -5,7 +5,8 @@ use std::{
     ops::{RangeBounds, RangeInclusive},
 };
 
-const GUARANTEED_SAFE: (RangeInclusive<isize>, RangeInclusive<isize>) = (-1..=1, 0..=0); // (-1..=1, -1..=1);
+const GUARANTEED_SAFE: (RangeInclusive<isize>, RangeInclusive<isize>) = (-1..=1, 0..=0);
+// const GUARANTEED_SAFE: (RangeInclusive<isize>, RangeInclusive<isize>) = (-1..=1, -1..=1);
 
 #[inline]
 pub fn in_safe_area(start: (usize, usize), (x, y): (usize, usize)) -> bool {
@@ -103,6 +104,9 @@ pub trait BoardInterface: Debug {
     /// Displays the visibility of the cell at `coords`.
     fn peek(&self, coords: Self::Coords) -> Visibility;
     fn get_hint(&self, coords: Self::Coords) -> Option<usize>;
+    /// Resets the Grid back to the initial state in-place. Only the starting area is visible and
+    /// rest of the cells are made hidden.
+    fn reset(&mut self, start: Self::Coords);
 
     /// Iterates through the given region of the Board.
     fn get_region<R>(&self, range: R) -> impl Iterator<Item = Option<Self::Coords>> + use<Self, R>

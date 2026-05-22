@@ -1,27 +1,22 @@
-use log::{Level, debug, info, log_enabled, warn};
+use log::{Level, debug, log_enabled};
+use rand::RngExt;
 use rand::seq::{IndexedRandom, SliceRandom};
-use rand::{RngExt, SeedableRng, rngs};
-use std::cmp::{Ord, Ordering};
+use std::cmp::Ordering;
 
-use crate::core::solver::SolverOptions;
-// use crate::core::solver::Solver as Solver1;
+use super::Generator;
 use crate::core::{
-    solver::{Constraint, Solver},
+    solver::Constraint,
     state::{BoardInterface, Visibility, grid::Board, in_safe_area},
 };
 
 type Coords = (usize, usize);
 
-pub struct Generator<'a, S: Solver<'a, Board, Coords>> {
+pub struct StGenerator<'a> {
     board: &'a mut Board,
-    solver: S,
-    solver_options: SolverOptions,
+    max_perturbations: usize,
 }
 
-impl<'a, S> Generator<'a, S>
-where
-    S: Solver<'a, Board, Coords>,
-{
+impl<'a> StGenerator<'a> {
     /// Helper function for `perturb()`. Whether all masked cell in the constraint share the exact
     /// same set of revealed neighbours.
     #[inline]
@@ -143,25 +138,6 @@ where
         });
 
         self.update_grid(&was_mine, &was_open);
-
-        for y in patch.1.saturating_sub(1)..=(patch.1 + patch_size + 1).min(self.board.height() - 1)
-        {
-            for x in
-                patch.0.saturating_sub(1)..=(patch.0 + patch_size + 1).min(self.board.width() - 1)
-            {
-                self.solver.clear_constraints_at((x, y));
-            }
-        }
-        for y in patch.1.saturating_sub(3)..=(patch.1 + patch_size + 1).min(self.board.height() - 1)
-        {
-            for x in
-                patch.0.saturating_sub(3)..=(patch.0 + patch_size + 1).min(self.board.width() - 1)
-            {
-                if self.board[(x, y)].visibility == Visibility::Revealed {
-                    self.solver.add_new_cell((x, y));
-                }
-            }
-        }
     }
 
     /// Helper function for `perturb()`. Converts constraint to trivial by adding/removing mines
@@ -286,25 +262,36 @@ where
                 "Updating constraints around ({:#5x}, {:#5x}).",
                 cell_coords.0, cell_coords.1
             );
-            self.solver.clear_constraints_containing(cell_coords);
-            self.board
-                .get_region(
-                    (cell_coords.0 as isize - 2, cell_coords.1 as isize - 2)
-                        ..=(cell_coords.0 as isize + 2, cell_coords.1 as isize + 2),
-                )
-                .flatten()
-                .filter(|&i| self.board[i].visibility == Visibility::Revealed)
-                .for_each(|i| self.solver.add_new_cell(i));
         }
+    }
+}
+
+impl<'a> Generator<'a, Board> for StGenerator<'a> {
+    fn new(board: &'a mut Board, max_perturbs: usize) -> Self {
+        Self {
+            board,
+            max_perturbations: max_perturbs,
+        }
+    }
+
+    fn get_max_perturbs(&mut self) -> &mut usize {
+        &mut self.max_perturbations
+    }
+
+    fn get_board(&mut self) -> &mut Board {
+        &mut self.board
     }
 
     /// Called during generation of the board when the solver fails. Modifies the grid
     /// semi-randomly in the hopes of making it solvable.
-    fn perturb(&mut self, start: (usize, usize), rng: &mut impl rand::Rng) -> () {
+    fn perturb(
+        &mut self,
+        all_constraints: Vec<&Constraint<Coords>>,
+        start: (usize, usize),
+        rng: &mut impl rand::Rng,
+    ) {
         const PATCH_SIZE: usize = 5;
         let picked_constraint = {
-            let constraints = self.solver.get_constraints();
-            let all_constraints: Vec<&Constraint<Coords>> = constraints.iter().flatten().collect();
             if all_constraints.len() < 2 {
                 None
             } else {
@@ -317,7 +304,6 @@ where
             if self.is_symmetric(constraint) {
                 debug!("Picked constraint is symmetric. Swapping mines globally.");
                 self.trvialise_constraint(start, constraint, rng, &PATCH_SIZE);
-                self.solver.remove_constraint(&constraint);
             } else {
                 let patch = (
                     constraint.coords.0.saturating_sub((PATCH_SIZE - 3) / 2),
@@ -353,107 +339,5 @@ where
         //     let all_constraints: Vec<&Constraint<Coords>> = constraints.iter().flatten().collect();
         //     debug!("Constraints after perturbation: {all_constraints:#?}");
         // }
-    }
-
-    // TODO: Update to accept Grid object instead.
-    /// Generates a non-guessing solvable board using the internal solver. Returns Err(()) if
-    /// reached maximum perturbations.
-    fn generate(board: Board, start: (usize, usize), rng: &mut impl rand::Rng) -> Result<(), ()> {
-        let mut self = Self {
-            board,
-            solver: S::new(board, options)
-        };
-        info!("Initial grid: {:?}", self.board);
-        let mut num_perturbs = 0;
-        while self
-            .solver
-            .init(&mut self.board, self.solver_options)
-            .is_err()
-        {
-            if num_perturbs >= self.solver_options.max_perturbations {
-                warn!(
-                    "Solver failed and reached maximum perturbations. Returning unsolvable grid."
-                );
-                return Err(());
-            }
-            debug!("Running perturbation no. {}", num_perturbs);
-            self.perturb(start, rng);
-            num_perturbs += 1;
-        }
-        info!("Generation completed in {} perturbations.", num_perturbs);
-
-        Ok(())
-    }
-}
-
-/// Generates a Game with num_mines mines of width x height dimensions using `seed` in
-/// Xoshiro128PlusPlus. `solvable` decides whether the grid is random or deducible. Returns
-/// (grid, solvable) as solvable generation can fail.
-pub fn new_with_mines<'a, S>(
-    width: usize,
-    height: usize,
-    num_mines: usize,
-    solvable: bool,
-    start: (usize, usize),
-    seed: u64,
-) -> (Board, bool)
-where
-    S: Solver<'a, Board, Coords>,
-{
-    info!("Generating new game with seed {seed}");
-    let mut random = rngs::Xoshiro128PlusPlus::seed_from_u64(seed);
-    let mut grid = Board::new_random(width, height, start, &mut random, num_mines);
-
-    if solvable {
-        let res = {
-            let mut solver = S::new(&mut grid, num_mines);
-            solver.solve_generate(start, &mut random)
-        };
-        match res {
-            Ok(()) => (grid, true),
-            Err(()) => (grid, false),
-        }
-    } else {
-        (grid, false)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use rand::{SeedableRng, rngs::StdRng};
-
-    #[test]
-    fn test_generate() {
-        env_logger::try_init().unwrap_or_default();
-        let mut rng = StdRng::seed_from_u64(1234);
-        let width = 32;
-        let height = 16;
-        let start = (width / 2, height / 2);
-        let num_mines = 200;
-        let mut grid = Board::new_random(width, height, start, &mut rng, num_mines);
-        let mut generator = Solver::new(&mut grid, num_mines);
-        generator
-            .solve_generate(start, &mut rng)
-            .expect("Failed board generation.");
-
-        println!("Generated grid: {grid:?}");
-        let mut grid = grid.clone_reset(start);
-        Solver::solve_grid(&mut grid, num_mines).unwrap_or_else(|_| {
-            panic!("Solving failed after generation. Partially solved: {grid}");
-        });
-        println!("Aftering solving: {grid:?}");
-        assert_eq!(
-            grid.count_cells(Visibility::Hidden),
-            0,
-            "Number of hidden cells {} > 0.",
-            grid.count_cells(Visibility::Hidden)
-        );
-        assert_eq!(
-            grid.count_cells(Visibility::Flagged),
-            num_mines,
-            "Number of flagged cells {} != {num_mines}",
-            grid.count_cells(Visibility::Flagged)
-        );
     }
 }
