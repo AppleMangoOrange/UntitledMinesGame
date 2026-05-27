@@ -439,15 +439,30 @@ impl BoardInterface for Board {
         }
         let cell = &mut self[coords];
         match cell.visibility {
-            Visibility::Revealed => Err(BoardError::FlagRevealed),
+            Visibility::Revealed => Err(BoardError::UnFlaggable),
             Visibility::Flagged => Ok(()),
-            Visibility::Hidden => match cell.is_mine {
-                true => {
-                    cell.visibility = Visibility::Flagged;
-                    Ok(())
+            Visibility::Hidden => {
+                cell.visibility = Visibility::Flagged;
+                match cell.is_mine {
+                    true => Ok(()),
+                    false => Err(BoardError::BadFlag),
                 }
-                false => Err(BoardError::FlagOpen),
-            },
+            }
+        }
+    }
+
+    fn undo_flag(&mut self, coords: Self::Coords) -> Result<(), BoardError> {
+        if coords.0 > self.width || coords.1 > self.height {
+            return Err(BoardError::CoordinatesOutOfBounds);
+        }
+        let cell = &mut self[coords];
+        match cell.visibility {
+            Visibility::Revealed => Err(BoardError::UnFlaggable),
+            Visibility::Flagged => {
+                cell.visibility = Visibility::Hidden;
+                Ok(())
+            }
+            Visibility::Hidden => Err(BoardError::UnFlaggable),
         }
     }
 

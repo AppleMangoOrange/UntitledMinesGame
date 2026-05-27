@@ -1,5 +1,6 @@
 pub mod grid;
 
+use log::trace;
 use std::{
     fmt::{self, Debug},
     ops::{RangeBounds, RangeInclusive},
@@ -10,15 +11,15 @@ const GUARANTEED_SAFE: (RangeInclusive<isize>, RangeInclusive<isize>) = (-1..=1,
 
 #[inline]
 pub fn in_safe_area(start: (usize, usize), (x, y): (usize, usize)) -> bool {
-    // debug!(
-    //     "Whether ({} <= {} <= {}) AND ({} <= {} <= {}).",
-    //     (start.0 as isize + GUARANTEED_SAFE.0.start()) as usize,
-    //     x,
-    //     (start.0 as isize + GUARANTEED_SAFE.0.end()) as usize,
-    //     (start.1 as isize + GUARANTEED_SAFE.1.start()) as usize,
-    //     y,
-    //     (start.1 as isize + GUARANTEED_SAFE.1.end()) as usize
-    // );
+    trace!(
+        "Whether ({} <= {} <= {}) AND ({} <= {} <= {}).",
+        (start.0 as isize + GUARANTEED_SAFE.0.start()) as usize,
+        x,
+        (start.0 as isize + GUARANTEED_SAFE.0.end()) as usize,
+        (start.1 as isize + GUARANTEED_SAFE.1.start()) as usize,
+        y,
+        (start.1 as isize + GUARANTEED_SAFE.1.end()) as usize
+    );
     ((start.0 as isize + GUARANTEED_SAFE.0.start()) as usize <= x
         && x <= (start.0 as isize + GUARANTEED_SAFE.0.end()) as usize)
         && ((start.1 as isize + GUARANTEED_SAFE.1.start()) as usize <= y
@@ -70,14 +71,14 @@ impl Cell {
 #[derive(Debug)]
 pub enum BoardError {
     CoordinatesOutOfBounds,
-    /// Trying to open a flagged cell
+    /// Trying to open a flagged cell (usually ignored)
     OpenFlagged,
     /// Trying to open a mine (lose condition)
     OpenMine,
-    /// Trying to flag a revealed cell
-    FlagRevealed,
+    /// Trying to flag a revealed cell or unflag a revealed or hidden cell
+    UnFlaggable,
     /// Trying to flag an open hidden cell (not fatal but wrong)
-    FlagOpen,
+    BadFlag,
 }
 
 pub trait Coordinate: Clone {
@@ -97,10 +98,12 @@ pub trait BoardInterface: Debug {
     fn height(&self) -> usize;
     fn get_num_mines(&self) -> usize;
 
-    /// Opens the cell at `coords`, returns Ok(hint) or Err(()) if opened a mine.
+    /// Opens the cell at `coords`, returns Ok(hint) or Err(()) if invalid.
     fn open(&mut self, coords: Self::Coords) -> Result<usize, BoardError>;
-    /// Flags cell at `coords`, returns Ok(()) or Err(()) depending on whether it was correct.
+    /// Flags cell at `coords`.
     fn flag(&mut self, coords: Self::Coords) -> Result<(), BoardError>;
+    /// Unflags cell at `coords`.
+    fn undo_flag(&mut self, coords: Self::Coords) -> Result<(), BoardError>;
     /// Displays the visibility of the cell at `coords`.
     fn peek(&self, coords: Self::Coords) -> Visibility;
     fn get_hint(&self, coords: Self::Coords) -> Option<usize>;
