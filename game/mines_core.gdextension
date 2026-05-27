@@ -1,0 +1,14 @@
+[configuration]
+entry_symbol = "gdext_rust_init"
+compatibility_minimum = 4.1
+reloadable = true
+
+[libraries]
+android.debug.arm64 = "res://../mines_core/target/aarch64-linux-android/debug/libmines_core.so"
+android.release.arm64 = "res://../mines_core/target/aarch64-linux-android/release/libmines_core.so"
+linux.debug.x86_64 = "res://../mines_core/target/x86_64-unknown-linux-gnu/debug/libmines_core.so"
+linux.release.x86_64 = "res://../mines_core/target/x86_64-unknown-linux-gnu/release/libmines_core.so"
+macos.debug = "res://../mines_core/target/debug/libmines_core.dylib"
+macos.release = "res://../mines_core/target/release/libmines_core.dylib"
+windows.debug.x86_64 = "res://../mines_core/target/debug/mines_core.dll"
+windows.release.x86_64 = "res://../mines_core/target/release/mines_core.dll"

@@ -16,7 +16,7 @@ godot = ["dep:godot"]
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-godot = {version = "0.4.5", optional = true}
+godot = {version = "0.5.3", optional = true, features = ["upcoming-editor-placeholders"]}
 log = "0.4.29"
 rand = "0.10.1"
 

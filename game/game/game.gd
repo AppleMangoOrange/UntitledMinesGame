@@ -6,17 +6,18 @@ extends Control
 @onready var game_board: Node = $PanelContainer/LayoutContainer/GameContainer/SubViewport/Board
 @onready var hud_panel: Node = $PanelContainer/LayoutContainer/HUD
 @onready var option_container: Node = $PanelContainer/LayoutContainer/HUD/OptionContainer
-const button_class = preload("res://game/hud_button.tscn")
+const button_class = preload("uid://xr6mk0lhwumq") # game/hud_button
 
 @export var hud_scale_ratio: float = 0.15
 
 func _ready() -> void:
+	Log.add_logfile("user://latest.log")
+	Log.set_default_output_level(Log.DEBUG)
 	get_tree().root.size_changed.connect(_on_resize)
 	_on_resize()
 	
 	GameSettings.load_settings()
 	_add_hud_options()
-
 
 func _on_resize() -> void:
 	var screen_size := get_viewport_rect().size
@@ -90,7 +91,7 @@ func _add_hud_options() -> void:
 	button_invert_contr.texture_normal = load("res://sprites/button/InvertControlsA.png")
 	button_invert_contr.texture_pressed = load("res://sprites/button/InvertControlsB.png")
 	button_invert_contr.toggle_mode = true
-	button_invert_contr.button_pressed = GameSettings.inverted_controls
+	button_invert_contr.button_pressed = GameSettings.game["invert_controls"]
 	button_invert_contr.toggled.connect(_invert_controls)
 	option_container.add_child(button_invert_contr)
 	
@@ -102,5 +103,5 @@ func _add_hud_options() -> void:
 
 
 func _invert_controls(toggled_on: bool) -> void:
-	GameSettings.inverted_controls = toggled_on
+	GameSettings.game["invert_controls"] = toggled_on
 	GameSettings.save_settings()
