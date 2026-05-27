@@ -46,35 +46,3 @@ where
         Ok(num_perturbs)
     }
 }
-
-// /// Generates a Game with num_mines mines of width x height dimensions using `seed` in
-// /// Xoshiro128PlusPlus. `solvable` decides whether the grid is random or deducible. Returns
-// /// (grid, solvable) as solvable generation can fail.
-// pub fn new_with_mines<'a, S>(
-//     width: usize,
-//     height: usize,
-//     num_mines: usize,
-//     solvable: bool,
-//     start: (usize, usize),
-//     seed: u64,
-// ) -> (Board, bool)
-// where
-//     S: Solver<'a, Board, Coords>,
-// {
-//     info!("Generating new game with seed {seed}");
-//     let mut random = rngs::Xoshiro128PlusPlus::seed_from_u64(seed);
-//     let mut grid = Board::new_random(width, height, start, &mut random, num_mines);
-
-//     if solvable {
-//         let res = {
-//             let mut solver = S::new(&mut grid, num_mines);
-//             solver.solve_generate(start, &mut random)
-//         };
-//         match res {
-//             Ok(()) => (grid, true),
-//             Err(()) => (grid, false),
-//         }
-//     } else {
-//         (grid, false)
-//     }
-// }
