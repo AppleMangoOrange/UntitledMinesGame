@@ -1,0 +1,2 @@
+# We don't care about UIDs of addon files
+*.uid
