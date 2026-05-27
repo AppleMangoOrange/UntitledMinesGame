@@ -1,1 +1,7 @@
+.zed
+.vscode
+
+.env
+
 notes/
+build*/
