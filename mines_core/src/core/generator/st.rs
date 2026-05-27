@@ -246,13 +246,6 @@ impl<'a> StGenerator<'a> {
             }
         }
         debug!("{was_mine:?} were mines. {was_open:?} were open.");
-        // constraint.mines = constraint
-        //     .mines
-        //     .checked_add_signed(num_change as i8 * if to_saturate { 1 } else { -1 })
-        //     .unwrap_or_else(|| {
-        //         panic!("Added/Removed more mines to {constraint:?} than possible ({num_change}).");
-        //     });
-        // self.create_constraint(constraint);
 
         self.update_grid(&was_mine, &was_open);
 
@@ -323,8 +316,6 @@ impl<'a> Generator<'a, Board> for StGenerator<'a> {
                             .get_relative_indices((x, y), -1..=1, -1..=1)
                             .flatten()
                             .any(|n| self.board[n].visibility == Visibility::Hidden)
-                    // .any(|n| self.grid[n].visibility == Visibility::Flagged)
-                    // TODO: check visibility criteria (caused generating unsolvable boards)
                 })
                 .map(|((x, y), _c)| (x, y))
                 .collect();
@@ -335,9 +326,5 @@ impl<'a> Generator<'a, Board> for StGenerator<'a> {
             );
             self.shuffle_patch(start, patch, rng, picked_constraint.is_none(), &PATCH_SIZE);
         }
-        // if log_enabled!(Level::Debug) {
-        //     let all_constraints: Vec<&Constraint<Coords>> = constraints.iter().flatten().collect();
-        //     debug!("Constraints after perturbation: {all_constraints:#?}");
-        // }
     }
 }
