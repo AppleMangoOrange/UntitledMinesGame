@@ -1,4 +1,4 @@
-use log::debug;
+use log::{debug, trace};
 use std::{cmp::Ordering, collections::VecDeque, fmt};
 
 use crate::core::state::grid::Grid;
@@ -39,10 +39,6 @@ where
 /// Replacement of `set` in mines.c. 3x3 square of cells storing mine location and count.
 #[derive(Clone, Copy, Eq, PartialEq)]
 pub struct Constraint<C> {
-    // /// top-left x co-ordinate of the 3x3 square
-    // pub x: usize,
-    // /// top-left y co-ordinate of the 3x3 square
-    // pub y: usize,
     pub coords: C,
     /// 9 boolean values indicating mine positions
     pub mask: u16,
@@ -103,7 +99,7 @@ impl Constraint<Coords> {
         debug!("New constraint centered at ({:#3x}, {:#3x})...", x, y);
         let mut mask = 0u16;
         let mut mines_remaining = board.get_hint((x, y))? as u8;
-        debug!("Set contains {mines_remaining} mines.");
+        trace!("Set contains {mines_remaining} mines.");
 
         let mut hook_x = x as isize - 1;
         let mut hook_y = y as isize - 1;
@@ -118,10 +114,10 @@ impl Constraint<Coords> {
                     Visibility::Flagged => mines_remaining -= 1,
                     _ => (),
                 }
-                // debug!(
-                //     "Neighbour {bit_i} is {}. Remaining mines: {mines_remaining}",
-                //     board.peek(nbr_c)
-                // );
+                trace!(
+                    "Neighbour {bit_i} is {}. Remaining mines: {mines_remaining}",
+                    board.peek(nbr_c)
+                );
             }
         }
         if hook_x == -1 {
